@@ -11,12 +11,11 @@ concurrency:
 
 jobs:
   build-test:
-    name: Build & Test (Intel)
-    # PalmierPro Intel local/BYOK edition. Trait-free x86_64 build on macOS 26.
+    name: Build & Test (Intel DMG)
+    # GitHub macos-26 runners are arm64. Run tests natively, then cross-compile
+    # the trait-free Intel release and package PalmierPro-Intel.dmg.
     runs-on: macos-26
     timeout-minutes: 60
-    env:
-      SWIFT_TRIPLE: x86_64-apple-macosx26.0
     steps:
       - uses: actions/checkout@v4
         with:
@@ -31,9 +30,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .build
-          key: spm-${{ runner.os }}-x86_64-${{ hashFiles('Package.resolved') }}
+          key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
           restore-keys: |
-            spm-${{ runner.os }}-x86_64-
             spm-${{ runner.os }}-
 
       - name: Check localization
@@ -48,11 +46,18 @@ jobs:
           scripts/localization/sync.sh "${localization_args[@]}"
           git diff --exit-code -- Sources/PalmierPro/Resources/Localization/en.lproj/Localizable.strings
 
-      - name: Test (Intel)
-        run: swift test --triple "$SWIFT_TRIPLE"
+      - name: Test
+        run: swift test
 
       - name: Bundle Intel DMG
         run: scripts/bundle.sh release --intel --dmg
+
+      - name: Verify Intel binary
+        run: |
+          archs="$(lipo -archs .build/PalmierPro.app/Contents/MacOS/PalmierPro)"
+          echo "architectures: $archs"
+          echo "$archs" | grep -qw x86_64
+          test -f .build/PalmierPro-Intel.dmg
 
       - name: Upload PalmierPro-Intel.dmg
         uses: actions/upload-artifact@v4
